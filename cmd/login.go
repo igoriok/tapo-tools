@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"log"
 	"slices"
 	"tapo/cloud/tapo"
 
@@ -15,7 +15,7 @@ import (
 
 var loginCmd = &cobra.Command{
 	Use:     "login",
-	Run:     runLogin,
+	RunE:    runLogin,
 	PreRun:  preRunLogin,
 	PostRun: postRunLogin,
 }
@@ -45,7 +45,7 @@ func preRunLogin(cmd *cobra.Command, args []string) {
 
 	if username == "" {
 
-		fmt.Print("Username: ")
+		fmt.Print("Username:")
 
 		username = prompt.Input(" ", func(d prompt.Document) []prompt.Suggest {
 			return []prompt.Suggest{}
@@ -56,7 +56,7 @@ func preRunLogin(cmd *cobra.Command, args []string) {
 
 	if password == "" {
 
-		fmt.Print("Password: ")
+		fmt.Print("Password:")
 
 		password = prompt.Input(" ", func(d prompt.Document) []prompt.Suggest {
 			return []prompt.Suggest{}
@@ -74,14 +74,13 @@ func postRunLogin(cmd *cobra.Command, args []string) {
 	fmt.Printf("TOKEN=%s\n", viper.GetString("TOKEN"))
 }
 
-func runLogin(cmd *cobra.Command, args []string) {
+func runLogin(cmd *cobra.Command, args []string) error {
 
 	appName := "TP-Link_Tapo_Android"
 	appVersion := "3.0.536"
 
 	termID := viper.GetString("TERM_ID")
 	termName := viper.GetString("TERM_NAME")
-	platform := viper.GetString("PLATFORM")
 
 	username, _ := cmd.Flags().GetString("username")
 	password, _ := cmd.Flags().GetString("password")
@@ -92,12 +91,12 @@ func runLogin(cmd *cobra.Command, args []string) {
 		AppName: appName,
 		AppVer:  appVersion,
 
-		OSPF:  "Android",
-		Brand: viper.GetString("BRAND"),
-		Model: viper.GetString("MODEL"),
-
 		NetType: "wifi",
 		Locale:  viper.GetString("LOCALE"),
+
+		OSPF:  viper.GetString("OSPF"),
+		Brand: viper.GetString("BRAND"),
+		Model: viper.GetString("MODEL"),
 
 		TermID:   termID,
 		TermName: termName,
@@ -106,10 +105,10 @@ func runLogin(cmd *cobra.Command, args []string) {
 
 	resp, err := client.AccountLogin(params, &tapo.AccountLoginRequest{
 
-		Platform: platform,
-
 		AppType:    appName,
 		AppVersion: appVersion,
+
+		Platform: params.OSPF,
 
 		TerminalMeta: params.TermMeta,
 		TerminalName: params.TermName,
@@ -120,7 +119,7 @@ func runLogin(cmd *cobra.Command, args []string) {
 	})
 
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	if resp.Result.ErrorCode == "-20677" {
@@ -135,7 +134,7 @@ func runLogin(cmd *cobra.Command, args []string) {
 			})
 
 			if err != nil {
-				log.Fatalln(err)
+				return err
 			}
 
 		} else if slices.Contains(resp.Result.SupportedMFATypes, tapo.MFATypeEmail) {
@@ -148,11 +147,11 @@ func runLogin(cmd *cobra.Command, args []string) {
 			})
 
 			if err != nil {
-				log.Fatalln(err)
+				return err
 			}
 
 		} else {
-			log.Fatalln("MFA not supported")
+			return errors.New("MFA not supported")
 		}
 
 		fmt.Print("MFA Code:")
@@ -173,7 +172,7 @@ func runLogin(cmd *cobra.Command, args []string) {
 		})
 
 		if err != nil {
-			log.Fatalln(err)
+			return err
 		}
 
 		viper.Set("TOKEN", resp.Result.Token)
@@ -181,4 +180,6 @@ func runLogin(cmd *cobra.Command, args []string) {
 	} else {
 		viper.Set("TOKEN", resp.Result.Token)
 	}
+
+	return nil
 }

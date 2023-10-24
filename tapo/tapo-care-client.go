@@ -11,7 +11,7 @@ type TapoCareClient struct {
 	Client *resty.Client
 }
 
-func NewTapoCareClient(baseURL string, token string, termID string) *TapoCareClient {
+func NewTapoCareClient(baseURL string, locale string, ospf string, model string, termID string, token string) *TapoCareClient {
 
 	appName := "TP-Link_Tapo_Android"
 	appVersion := "3.0.536"
@@ -22,14 +22,14 @@ func NewTapoCareClient(baseURL string, token string, termID string) *TapoCareCli
 	client.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
 
 	client.SetHeader("Authorization", fmt.Sprintf("ut|%s", token))
-	client.SetHeader("User-Agent", fmt.Sprintf("%s/%s(Pixel 7/;Android 14)", appName, appVersion))
+	client.SetHeader("User-Agent", fmt.Sprintf("%s/%s(%s/;%s)", appName, appVersion, model, ospf))
 
 	client.SetHeaderVerbatim("app-cid", fmt.Sprintf("app:%s:%s", appName, termID))
 	client.SetHeaderVerbatim("x-app-name", appName)
 	client.SetHeaderVerbatim("x-app-version", termID)
-	client.SetHeaderVerbatim("x-ospf", "Android 14")
+	client.SetHeaderVerbatim("x-ospf", ospf)
 	client.SetHeaderVerbatim("x-net-type", "wifi")
-	client.SetHeaderVerbatim("x-locale", "en_US")
+	client.SetHeaderVerbatim("x-locale", locale)
 
 	return &TapoCareClient{
 		Client: client,

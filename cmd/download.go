@@ -14,8 +14,8 @@ import (
 )
 
 var downloadCmd = &cobra.Command{
-	Use: "download",
-	Run: runDownload,
+	Use:  "download",
+	RunE: runDownload,
 }
 
 func init() {
@@ -25,10 +25,10 @@ func init() {
 	rootCmd.AddCommand(downloadCmd)
 }
 
-func runDownload(cmd *cobra.Command, args []string) {
+func runDownload(cmd *cobra.Command, args []string) error {
 
-	token := viper.GetString("TOKEN")
-	termID := viper.GetString("TERM_ID")
+	cfg := &config{}
+	viper.Unmarshal(cfg)
 
 	since, _ := cmd.Flags().GetInt("since")
 	days, _ := cmd.Flags().GetInt("days")
@@ -36,65 +36,73 @@ func runDownload(cmd *cobra.Command, args []string) {
 	pwd, _ := os.Getwd()
 	ffmpeg, _ := exec.LookPath(".\\ffmpeg")
 
-	client := tapo.NewTapoCareClient("https://euw1-app-tapo-care.i.tplinknbu.com", token, termID)
-
 	startDate := time.Now().Add(time.Hour * -24 * time.Duration(max(since, days)-1))
 	endDate := startDate.Add(time.Hour * 24 * time.Duration(days))
 
-	if resp, err := client.GetVideosDevices(); err == nil {
+	client := tapo.NewTapoCareClient("https://euw1-app-tapo-care.i.tplinknbu.com", cfg.Locale, cfg.OSPF, cfg.Model, cfg.TermID, cfg.Token)
 
-		for _, device := range resp.DeviceList {
+	resp, err := client.GetVideosDevices()
 
-			for page := 0; ; page++ {
+	if err != nil {
+		return err
+	}
 
-				req := tapo.ListActivitiesByDateRequest{
-					DeviceId: device.DeviceId,
-					Page:     page,
-					PageSize: 100,
+	for _, device := range resp.DeviceList {
 
-					StartTime: startDate.Format("2006-01-02 00:00:00"),
-					EndTime:   endDate.Format("2006-01-02 00:00:00"),
+		for page := 0; ; page++ {
 
-					Source:           "1",
-					EventTypeFilters: []tapo.EventType{},
+			req := tapo.ListActivitiesByDateRequest{
+				DeviceId: device.DeviceId,
+				Page:     page,
+				PageSize: 100,
+
+				StartTime: startDate.Format("2006-01-02 00:00:00"),
+				EndTime:   endDate.Format("2006-01-02 00:00:00"),
+
+				Source:           "1",
+				EventTypeFilters: []tapo.EventType{},
+			}
+
+			resp, err := client.ListActivitiesByDate(&req)
+
+			if err != nil {
+				return err
+			}
+
+			for _, activity := range resp.Listing {
+
+				basePath := filepath.Join(pwd, device.Alias)
+				filePath := getFilePath(basePath, activity.Event.EventLocalTime, ".mp4")
+
+				if _, err := os.Stat(filePath); err == nil {
+					log.Printf("File %s already exists. Skipping...\n", filePath)
+					continue
 				}
 
-				resp, err := client.ListActivitiesByDate(&req)
-
-				if err != nil {
-					log.Fatalln(err)
+				if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
+					log.Println(err)
+					continue
 				}
 
-				for _, activity := range resp.Listing {
+				url := fmt.Sprintf("%s&token=%s", activity.Event.Data.Video.StreamUrl, cfg.Token)
 
-					basePath := filepath.Join(pwd, device.Alias)
-					filePath := getFilePath(basePath, activity.Event.EventLocalTime, ".mp4")
+				cmd := exec.Command(ffmpeg, "-i", url, filePath)
+				//cmd.Stdout = os.Stdout
+				//cmd.Stderr = os.Stderr
 
-					if _, err := os.Stat(filePath); os.IsExist(err) {
-						continue
-					}
-
-					if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
-						log.Println(err)
-						continue
-					}
-
-					url := fmt.Sprintf("%s&token=%s", activity.Event.Data.Video.StreamUrl, token)
-
-					cmd := exec.Command(ffmpeg, "-i", url, filePath)
-					cmd.Stdout = os.Stdout
-					cmd.Stderr = os.Stderr
-
-					if err := cmd.Run(); err != nil {
-						log.Println(err)
-						continue
-					}
+				if err := cmd.Run(); err != nil {
+					log.Println(err)
+					continue
 				}
 
-				if resp.Total <= (resp.Page+1)*resp.PageSize {
-					break
-				}
+				log.Printf("Downloaded %s\n", filePath)
+			}
+
+			if resp.Total <= (resp.Page+1)*resp.PageSize {
+				break
 			}
 		}
 	}
+
+	return nil
 }

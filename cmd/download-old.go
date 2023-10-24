@@ -21,8 +21,8 @@ import (
 )
 
 var downloadOldCmd = &cobra.Command{
-	Use: "download-old",
-	Run: runDownloadOld,
+	Use:  "download-old",
+	RunE: runDownloadOld,
 }
 
 var httpClient = &http.Client{
@@ -38,10 +38,10 @@ func init() {
 	rootCmd.AddCommand(downloadOldCmd)
 }
 
-func runDownloadOld(cmd *cobra.Command, args []string) {
+func runDownloadOld(cmd *cobra.Command, args []string) error {
 
-	token := viper.GetString("TOKEN")
-	termID := viper.GetString("TERM_ID")
+	cfg := &config{}
+	viper.Unmarshal(cfg)
 
 	since, _ := cmd.Flags().GetInt("since")
 	days, _ := cmd.Flags().GetInt("days")
@@ -51,67 +51,73 @@ func runDownloadOld(cmd *cobra.Command, args []string) {
 	startDate := time.Now().Add(time.Hour * -24 * time.Duration(max(since, days)-1))
 	endDate := startDate.Add(time.Hour * 24 * time.Duration(since))
 
-	client := tapo.NewTapoCareClient("https://euw1-app-tapo-care.i.tplinknbu.com", token, termID)
+	client := tapo.NewTapoCareClient("https://euw1-app-tapo-care.i.tplinknbu.com", cfg.Locale, cfg.OSPF, cfg.Model, cfg.TermID, cfg.Token)
 
-	if resp, err := client.GetVideosDevices(); err != nil {
+	resp, err := client.GetVideosDevices()
 
-		for _, device := range resp.DeviceList {
+	if err != nil {
+		return err
+	}
 
-			for page := 0; ; page++ {
+	for _, device := range resp.DeviceList {
 
-				resp, err := client.GetVideosList(&tapo.GetVideosListRequest{
-					DeviceId:  device.DeviceId,
-					StartTime: startDate.Format("2006-01-02 00:00:00"),
-					EndTime:   endDate.Format("2006-01-02 00:00:00"),
-					Order:     "desc",
-					Page:      page,
-					PageSize:  100,
-				})
+		for page := 0; ; page++ {
 
-				if err != nil {
-					log.Fatalln(err)
-				}
+			resp, err := client.GetVideosList(&tapo.GetVideosListRequest{
+				DeviceId:  device.DeviceId,
+				StartTime: startDate.Format("2006-01-02 00:00:00"),
+				EndTime:   endDate.Format("2006-01-02 00:00:00"),
+				Order:     "desc",
+				Page:      page,
+				PageSize:  100,
+			})
 
-				for _, index := range resp.Index {
+			if err != nil {
+				return err
+			}
 
-					for _, video := range index.Video {
+			for _, index := range resp.Index {
 
-						basePath := filepath.Join(pwd, device.Alias)
-						filePath := getFilePath(basePath, index.EventLocalTime, ".ts")
+				for _, video := range index.Video {
 
-						if _, err := os.Stat(filePath); os.IsExist(err) {
-							continue
-						}
+					basePath := filepath.Join(pwd, device.Alias)
+					filePath := getFilePath(basePath, index.EventLocalTime, ".ts")
 
-						if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
-							log.Println(err)
-							continue
-						}
-
-						file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY, os.ModePerm)
-
-						if err != nil {
-							log.Println(err)
-							continue
-						}
-
-						defer file.Close()
-
-						_, err = readVideo(video, file)
-
-						if err != nil {
-							log.Println(err)
-							continue
-						}
+					if _, err := os.Stat(filePath); err == nil {
+						log.Printf("File %s already exists.Skipping...\n", filePath)
+						continue
 					}
-				}
 
-				if resp.Total <= (resp.Page+1)*resp.PageSize {
-					break
+					if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
+						log.Println(err)
+						continue
+					}
+
+					file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY, os.ModePerm)
+
+					if err != nil {
+						log.Println(err)
+						continue
+					}
+
+					defer file.Close()
+
+					if _, err = readVideo(video, file); err != nil {
+						log.Println(err)
+						continue
+					}
+
+					log.Printf("Downloaded %s\n", filePath)
 				}
+			}
+
+			if resp.Total <= (resp.Page+1)*resp.PageSize {
+				break
 			}
 		}
 	}
+
+	return nil
 }
 
 func getFilePath(basePath string, eventLocalTime string, ext string) string {

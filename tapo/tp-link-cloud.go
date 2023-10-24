@@ -166,16 +166,16 @@ func (c *TpLinkCloudClient) GetEmailVC4TerminalMFA(params *GenericTapoParams, re
 	return resp.Result().(*GenericTapoResponse[EmptyTapoResult]), err
 }
 
-func (c *TpLinkCloudClient) CheckMFACodeAndLogin(params *GenericTapoParams, req *CheckMFACodeAndLoginRequest) (*GenericTapoResponse[CheckMFACodeAndLoginResult], error) {
+func (c *TpLinkCloudClient) CheckMFACodeAndLogin(params *GenericTapoParams, req *CheckMFACodeAndLoginRequest) (*GenericTapoResponse[AccountLoginResult], error) {
 
 	resp, err := c.Client.R().
 		SetQueryParams(getQueryParams(params)).
 		SetBody(req).
 		ForceContentType("application/json").
-		SetResult(&GenericTapoResponse[CheckMFACodeAndLoginResult]{}).
+		SetResult(&GenericTapoResponse[AccountLoginResult]{}).
 		Post("/api/v2/account/checkMFACodeAndLogin")
 
-	return resp.Result().(*GenericTapoResponse[CheckMFACodeAndLoginResult]), err
+	return resp.Result().(*GenericTapoResponse[AccountLoginResult]), err
 }
 
 func getQueryParams(params *GenericTapoParams) map[string]string {
@@ -287,17 +287,6 @@ type CheckMFACodeAndLoginRequest struct {
 	CloudUserName       string  `json:"cloudUserName"`
 	Code                string  `json:"code"`
 	TerminalBindEnabled bool    `json:"terminalBindEnabled"`
-}
-
-type CheckMFACodeAndLoginResult struct {
-	AccountId    string `json:"accountId"`
-	AppServerUrl string `json:"appServerUrl"`
-	Email        string `json:"email"`
-	ErrorCode    string `json:"errorCode"`
-	Nickname     string `json:"nickname"`
-	RegTime      string `json:"regTime"`
-	RegionCode   string `json:"regionCode"`
-	Token        string `json:"token"`
 }
 
 type GenericTapoParams struct {
