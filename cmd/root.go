@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"log"
+	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -36,8 +37,11 @@ func init() {
 
 func onInitialize() {
 
+	homeDir, _ := os.UserHomeDir()
+
+	viper.AddConfigPath(homeDir)
 	viper.AddConfigPath(".")
-	viper.SetConfigFile(".env")
+	viper.SetConfigFile(".tapo-tools")
 	viper.SetConfigType("dotenv")
 
 	if err := viper.ReadInConfig(); err != nil {

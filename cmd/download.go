@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -34,7 +35,13 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	days, _ := cmd.Flags().GetInt("days")
 
 	pwd, _ := os.Getwd()
-	ffmpeg, _ := exec.LookPath(".\\ffmpeg")
+	ffmpeg, err := exec.LookPath("ffmpeg")
+
+	if err != nil {
+		if !errors.Is(err, exec.ErrDot) {
+			return err
+		}
+	}
 
 	startDate := time.Now().Add(time.Hour * -24 * time.Duration(max(since, days)-1))
 	endDate := startDate.Add(time.Hour * 24 * time.Duration(days))
